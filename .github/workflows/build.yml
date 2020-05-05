@@ -119,7 +119,7 @@ jobs:
       - name: Publish Release (Github Release)
         uses: softprops/action-gh-release@v1
         with:
-          files: target/package/juno-${{steps.version_check.outputs.rawVersion}}.crate
+          files: target/package/juno-${{steps.version_check.outputs.rawVersion}}-beta.crate
           tag_name: ${{steps.version_check.outputs.releaseVersion}}
           prerelease: true
         env:
