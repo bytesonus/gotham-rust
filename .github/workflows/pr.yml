@@ -19,7 +19,7 @@ jobs:
         uses: thebongy/version-check@v1
         with:
           file: Cargo.toml
-          tagFormat: ${version}-beta
+          tagFormat: v${version}-beta
         id: version_check_staging
       
       - name: Check Release Version (master)
@@ -27,7 +27,7 @@ jobs:
         uses: thebongy/version-check@v1
         with:
           file: Cargo.toml
-          tagFormat: ${version}
+          tagFormat: v${version}
         id: version_check_master
   build:
     runs-on: ${{ matrix.os }}
