@@ -2,7 +2,7 @@
 authors = ["Rakshith Ravi <rakshith.ravi@gmx.com>"]
 edition = "2018"
 name = "juno"
-version = "0.1.2"
+version = "0.1.2-1"
 license = "MIT"
 description = "A helper rust library for the juno microservices framework"
 homepage = "https://github.com/bytesonus/juno-rust"
