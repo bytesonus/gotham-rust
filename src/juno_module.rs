@@ -260,7 +260,7 @@ async fn on_data_listener(
 				}
 				Ok(Value::Null)
 			}
-			BaseMessage::TriggerHookRequest { .. } => {
+			BaseMessage::TriggerHookResponse { .. } => {
 				execute_hook_triggered(message, &registered_store, &hook_listeners).await
 			}
 			BaseMessage::Error { error, .. } => Err(Error::FromJuno(error)),
@@ -300,19 +300,24 @@ async fn execute_hook_triggered(
 	registered_store: &Arc<RwLock<bool>>,
 	hook_listeners: &ArcHookListenerList,
 ) -> Result<Value> {
-	if let BaseMessage::TriggerHookRequest { hook, .. } = message {
-		if &hook == "juno.activated" {
-			*registered_store.write().unwrap() = true;
-		} else if &hook == "juno.deactivated" {
-			*registered_store.write().unwrap() = false;
+	if let BaseMessage::TriggerHookResponse { hook, .. } = message {
+		if hook.is_some() {
+			let hook = hook.unwrap();
+			if hook == "juno.activated" {
+				*registered_store.write().unwrap() = true;
+			} else if &hook == "juno.deactivated" {
+				*registered_store.write().unwrap() = false;
+			} else {
+				let hook_listeners = hook_listeners.lock().await;
+				if !hook_listeners.contains_key(&hook) {
+					todo!("Wtf do I do now? Need to propogate errors. How do I do that?");
+				}
+				for listener in &hook_listeners[&hook] {
+					listener(Value::Null);
+				}
+			}
 		} else {
-			let hook_listeners = hook_listeners.lock().await;
-			if !hook_listeners.contains_key(&hook) {
-				todo!("Wtf do I do now? Need to propogate errors. How do I do that?");
-			}
-			for listener in &hook_listeners[&hook] {
-				listener(Value::Null);
-			}
+			// This module triggered the hook.
 		}
 	} else {
 		panic!("Cannot execute hook from a request that wasn't a TriggerHookRequest!");
