@@ -146,9 +146,9 @@ impl JunoModule {
 		Ok(())
 	}
 
-	pub async fn trigger_hook(&mut self, hook: &str) -> Result<()> {
+	pub async fn trigger_hook(&mut self, hook: &str, data: Value) -> Result<()> {
 		let hook = hook.to_string();
-		let request = self.protocol.trigger_hook(hook);
+		let request = self.protocol.trigger_hook(hook, data);
 		self.send_request(request).await?;
 		Ok(())
 	}
