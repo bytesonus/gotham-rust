@@ -82,9 +82,10 @@ pub fn encode(protocol: &BaseProtocol, req: BaseMessage) -> Buffer {
 					request_keys::HOOK: hook,
 				}),
 
-				BaseMessage::TriggerHookResponse { request_id } => json!({
+				BaseMessage::TriggerHookResponse { request_id, hook } => json!({
 					request_keys::REQUEST_ID: request_id,
 					request_keys::TYPE: request_types::TRIGGER_HOOK_RESPONSE,
+					request_keys::HOOK: hook
 				}),
 
 				BaseMessage::DeclareFunctionRequest {
@@ -210,8 +211,12 @@ fn decode_internal(data: &[u8]) -> Option<BaseMessage> {
 		Some(BaseMessage::TriggerHookRequest { request_id, hook })
 	} else if r#type == 8 {
 		let request_id = result[request_keys::REQUEST_ID].as_str()?.to_string();
+		let hook = match result[request_keys::HOOK].as_str() {
+			Some(string) => Some(string.to_string()),
+			None => None
+		};
 
-		Some(BaseMessage::TriggerHookResponse { request_id })
+		Some(BaseMessage::TriggerHookResponse { request_id, hook })
 	} else if r#type == 9 {
 		let request_id = result[request_keys::REQUEST_ID].as_str()?.to_string();
 		let function = result[request_keys::FUNCTION].as_str()?.to_string();

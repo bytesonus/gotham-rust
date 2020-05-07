@@ -35,6 +35,7 @@ fn check_types_are_storing_values() {
 		},
 		BaseMessage::TriggerHookResponse {
 			request_id: String::from("request_id"),
+			hook: Some(String::from("hook")),
 		},
 		BaseMessage::DeclareFunctionRequest {
 			request_id: String::from("request_id"),
@@ -93,8 +94,9 @@ fn check_types_are_storing_values() {
 				assert_eq!(request_id, &String::from("request_id"));
 				assert_eq!(hook, &String::from("hook"));
 			}
-			BaseMessage::TriggerHookResponse { request_id } => {
+			BaseMessage::TriggerHookResponse { request_id, hook } => {
 				assert_eq!(request_id, &String::from("request_id"));
+				assert_eq!(hook, &Some(String::from("hook")));
 			}
 			BaseMessage::DeclareFunctionRequest {
 				request_id,

@@ -33,6 +33,7 @@ pub enum BaseMessage {
 	},
 	TriggerHookResponse {
 		request_id: String,
+		hook: Option<String>
 	},
 	DeclareFunctionRequest {
 		request_id: String,
