@@ -75,10 +75,11 @@ impl BaseProtocol {
 		}
 	}
 
-	pub fn trigger_hook(&self, hook: String) -> BaseMessage {
+	pub fn trigger_hook(&self, hook: String, data: Value) -> BaseMessage {
 		BaseMessage::TriggerHookRequest {
 			request_id: self.generate_request_id(),
 			hook,
+			data,
 		}
 	}
 

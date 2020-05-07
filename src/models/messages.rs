@@ -30,10 +30,12 @@ pub enum BaseMessage {
 	TriggerHookRequest {
 		request_id: String,
 		hook: String,
+		data: Value,
 	},
 	TriggerHookResponse {
 		request_id: String,
 		hook: Option<String>,
+		data: Value,
 	},
 	DeclareFunctionRequest {
 		request_id: String,
