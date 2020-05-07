@@ -213,7 +213,7 @@ fn decode_internal(data: &[u8]) -> Option<BaseMessage> {
 		let request_id = result[request_keys::REQUEST_ID].as_str()?.to_string();
 		let hook = match result[request_keys::HOOK].as_str() {
 			Some(string) => Some(string.to_string()),
-			None => None
+			None => None,
 		};
 
 		Some(BaseMessage::TriggerHookResponse { request_id, hook })
