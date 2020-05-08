@@ -125,14 +125,12 @@ impl JunoModule {
 		args: HashMap<String, Value>,
 	) -> Result<Value> {
 		let fn_name = fn_name.to_string();
-		self.ensure_registered()?;
 		let request = self.protocol.call_function(fn_name, args);
 		self.send_request(request).await
 	}
 
 	pub async fn register_hook(&mut self, hook: &str, callback: fn(Value)) -> Result<()> {
 		let hook = hook.to_string();
-		self.ensure_registered()?;
 		let mut hook_listeners = self.hook_listeners.lock().await;
 		if hook_listeners.contains_key(&hook) {
 			hook_listeners.get_mut(&hook).unwrap().push(callback);
@@ -155,15 +153,6 @@ impl JunoModule {
 
 	pub async fn close(&mut self) {
 		self.connection.close_connection().await;
-	}
-
-	fn ensure_registered(&self) -> Result<()> {
-		if !*self.registered.read().unwrap() {
-			return Err(Error::Internal(String::from(
-				"Module not registered. Did you .await the call to initialize?",
-			)));
-		}
-		Ok(())
 	}
 
 	async fn setup_connections(&mut self) -> Result<()> {
@@ -206,6 +195,10 @@ impl JunoModule {
 		let request_id = request.get_request_id().clone();
 		let mut encoded = self.protocol.encode(request);
 		if *self.registered.read().unwrap() || request_type == 1 {
+			if self.message_buffer.len() != 0 {
+				self.connection.send(self.message_buffer.clone()).await;
+				self.message_buffer.clear();
+			}
 			self.connection.send(encoded).await;
 		} else {
 			self.message_buffer.append(&mut encoded);
@@ -300,7 +293,7 @@ async fn execute_hook_triggered(
 	registered_store: &Arc<RwLock<bool>>,
 	hook_listeners: &ArcHookListenerList,
 ) -> Result<Value> {
-	if let BaseMessage::TriggerHookResponse { hook, .. } = message {
+	if let BaseMessage::TriggerHookResponse { hook, data, .. } = message {
 		if hook.is_some() {
 			let hook = hook.unwrap();
 			if hook == "juno.activated" {
@@ -313,7 +306,7 @@ async fn execute_hook_triggered(
 					todo!("Wtf do I do now? Need to propogate errors. How do I do that?");
 				}
 				for listener in &hook_listeners[&hook] {
-					listener(Value::Null);
+					listener(data.clone());
 				}
 			}
 		} else {
