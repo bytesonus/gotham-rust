@@ -198,10 +198,7 @@ impl JunoModule {
 		if *self.registered.read().await || request_type == 1 {
 			self.connection.send(encoded).await;
 		} else {
-			self.message_buffer
-				.write()
-				.await
-				.append(&mut encoded);
+			self.message_buffer.write().await.append(&mut encoded);
 		}
 
 		let (sender, receiver) = channel::<Result<Value>>();
@@ -255,7 +252,14 @@ async fn on_data_listener(
 				Ok(Value::Null)
 			}
 			BaseMessage::TriggerHookResponse { .. } => {
-				execute_hook_triggered(message, &message_buffer, &write_sender, &registered_store, &hook_listeners).await
+				execute_hook_triggered(
+					message,
+					&message_buffer,
+					&write_sender,
+					&registered_store,
+					&hook_listeners,
+				)
+				.await
 			}
 			BaseMessage::Error { error, .. } => Err(Error::FromJuno(error)),
 			_ => Ok(Value::Null),

@@ -16,6 +16,9 @@ async-trait = "0.1.24"
 futures = "0.3.4"
 futures-util = "0.3.4"
 
+[dev-dependencies]
+async-std = { version = "1", features = ["attributes"] }
+
 [profile.release]
 lto = true
 panic = 'abort'
