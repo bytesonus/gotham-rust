@@ -17,7 +17,7 @@ use crate::connection::UnixSocketConnection;
 
 use async_std::{
 	prelude::*,
-	sync::{Arc, Mutex},
+	sync::{Arc, Mutex, RwLock},
 	task,
 };
 use futures::channel::{
@@ -25,7 +25,6 @@ use futures::channel::{
 	oneshot::{channel, Sender},
 };
 use futures_util::sink::SinkExt;
-use std::sync::RwLock;
 use std::{
 	collections::HashMap,
 	net::{AddrParseError, SocketAddr},
@@ -41,7 +40,7 @@ pub struct JunoModule {
 	requests: ArcRequestList,
 	functions: ArcFunctionList,
 	hook_listeners: ArcHookListenerList,
-	message_buffer: Buffer,
+	message_buffer: Arc<RwLock<Buffer>>,
 	registered: Arc<RwLock<bool>>,
 }
 
@@ -83,7 +82,7 @@ impl JunoModule {
 			requests: Arc::new(Mutex::new(HashMap::new())),
 			functions: Arc::new(Mutex::new(HashMap::new())),
 			hook_listeners: Arc::new(Mutex::new(HashMap::new())),
-			message_buffer: vec![],
+			message_buffer: Arc::new(RwLock::new(vec![])),
 			registered: Arc::new(RwLock::new(false)),
 		}
 	}
@@ -165,6 +164,7 @@ impl JunoModule {
 		let requests = self.requests.clone();
 		let functions = self.functions.clone();
 		let hook_listeners = self.hook_listeners.clone();
+		let message_buffer = self.message_buffer.clone();
 		let registered_store = self.registered.clone();
 
 		// Run the read-write loop
@@ -175,6 +175,7 @@ impl JunoModule {
 				requests,
 				functions,
 				hook_listeners,
+				message_buffer,
 				registered_store,
 				write_sender,
 			)
@@ -186,7 +187,7 @@ impl JunoModule {
 
 	async fn send_request(&mut self, request: BaseMessage) -> Result<Value> {
 		if let BaseMessage::RegisterModuleRequest { .. } = request {
-			if *self.registered.read().unwrap() {
+			if *self.registered.read().await {
 				return Err(Error::Internal(String::from("Module already registered")));
 			}
 		}
@@ -194,14 +195,13 @@ impl JunoModule {
 		let request_type = request.get_type();
 		let request_id = request.get_request_id().clone();
 		let mut encoded = self.protocol.encode(request);
-		if *self.registered.read().unwrap() || request_type == 1 {
-			if self.message_buffer.len() != 0 {
-				self.connection.send(self.message_buffer.clone()).await;
-				self.message_buffer.clear();
-			}
+		if *self.registered.read().await || request_type == 1 {
 			self.connection.send(encoded).await;
 		} else {
-			self.message_buffer.append(&mut encoded);
+			self.message_buffer
+				.write()
+				.await
+				.append(&mut encoded);
 		}
 
 		let (sender, receiver) = channel::<Result<Value>>();
@@ -223,6 +223,7 @@ async fn on_data_listener(
 	requests: ArcRequestList,
 	functions: ArcFunctionList,
 	hook_listeners: ArcHookListenerList,
+	message_buffer: Arc<RwLock<Buffer>>,
 	registered_store: Arc<RwLock<bool>>,
 	mut write_sender: UnboundedSender<Buffer>,
 ) {
@@ -254,7 +255,7 @@ async fn on_data_listener(
 				Ok(Value::Null)
 			}
 			BaseMessage::TriggerHookResponse { .. } => {
-				execute_hook_triggered(message, &registered_store, &hook_listeners).await
+				execute_hook_triggered(message, &message_buffer, &write_sender, &registered_store, &hook_listeners).await
 			}
 			BaseMessage::Error { error, .. } => Err(Error::FromJuno(error)),
 			_ => Ok(Value::Null),
@@ -290,6 +291,8 @@ async fn execute_function_call(message: BaseMessage, functions: &ArcFunctionList
 
 async fn execute_hook_triggered(
 	message: BaseMessage,
+	message_buffer: &Arc<RwLock<Buffer>>,
+	mut write_sender: &UnboundedSender<Buffer>,
 	registered_store: &Arc<RwLock<bool>>,
 	hook_listeners: &ArcHookListenerList,
 ) -> Result<Value> {
@@ -297,9 +300,14 @@ async fn execute_hook_triggered(
 		if hook.is_some() {
 			let hook = hook.unwrap();
 			if hook == "juno.activated" {
-				*registered_store.write().unwrap() = true;
+				*registered_store.write().await = true;
+				let mut buffer = message_buffer.write().await;
+				if let Err(err) = write_sender.send(buffer.clone()).await {
+					println!("Error writing remaining buffer: {}", err);
+				}
+				buffer.clear();
 			} else if &hook == "juno.deactivated" {
-				*registered_store.write().unwrap() = false;
+				*registered_store.write().await = false;
 			} else {
 				let hook_listeners = hook_listeners.lock().await;
 				if !hook_listeners.contains_key(&hook) {
