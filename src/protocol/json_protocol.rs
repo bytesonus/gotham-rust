@@ -147,12 +147,9 @@ pub fn encode(protocol: &BaseProtocol, req: BaseMessage) -> Buffer {
 pub fn get_next_message(protocol: &mut BaseProtocol) -> Option<BaseMessage> {
 	match protocol {
 		BaseProtocol::JsonProtocol { ref mut buffer, .. } => {
-			let index = buffer.iter().position(|item| item == &b'\n');
-			if index.is_none() {
-				return None;
-			}
+			let index = buffer.iter().position(|item| item == &b'\n')?;
 
-			let new_buffer = buffer.split_off(index.unwrap());
+			let new_buffer = buffer.split_off(index);
 			let message = decode_internal(&buffer);
 			*buffer = new_buffer;
 			if message.is_none() {
@@ -163,6 +160,18 @@ pub fn get_next_message(protocol: &mut BaseProtocol) -> Option<BaseMessage> {
 				message
 			}
 		}
+		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
+	}
+}
+
+pub fn decode(protocol: &BaseProtocol, data: &[u8]) -> BaseMessage {
+	match protocol {
+		BaseProtocol::JsonProtocol { .. } => match decode_internal(data) {
+			Some(message) => message,
+			None => BaseMessage::Unknown {
+				request_id: String::default(),
+			},
+		},
 		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
 	}
 }

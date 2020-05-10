@@ -9,16 +9,19 @@ use async_std::sync::{Mutex, RwLock};
 use futures::channel::oneshot::Sender;
 use std::collections::HashMap;
 
+type HookListeners = RwLock<HashMap<String, Vec<fn(Value)>>>;
+type Functions = RwLock<HashMap<String, fn(HashMap<String, Value>) -> Value>>;
+
 // Create separate rwlocks for each individual element
 // Such that each one of them can be individually read or written independent of the other
 pub(crate) struct JunoModuleImpl {
-	pub(crate) protocol: Mutex<BaseProtocol>,
+	pub(crate) protocol: RwLock<BaseProtocol>,
 	pub(crate) connection: RwLock<Box<dyn BaseConnection + Send + Sync>>,
-	pub(crate) requests: Mutex<HashMap<String, Sender<Result<Value>>>>,
-	pub(crate) functions: Mutex<HashMap<String, fn(HashMap<String, Value>) -> Value>>,
-	pub(crate) hook_listeners: Mutex<HashMap<String, Vec<fn(Value)>>>,
+	pub(crate) requests: RwLock<HashMap<String, Sender<Result<Value>>>>,
+	pub(crate) functions: Functions,
+	pub(crate) hook_listeners: HookListeners,
 	pub(crate) message_buffer: Mutex<Buffer>,
-	pub(crate) registered: Mutex<bool>,
+	pub(crate) registered: RwLock<bool>,
 }
 
 impl JunoModuleImpl {
@@ -27,7 +30,7 @@ impl JunoModuleImpl {
 		function: String,
 		arguments: HashMap<String, Value>,
 	) -> Result<Value> {
-		let functions = self.functions.lock().await;
+		let functions = self.functions.read().await;
 		if !functions.contains_key(&function) {
 			return Err(Error::FromJuno(utils::errors::UNKNOWN_FUNCTION));
 		}
@@ -46,14 +49,14 @@ impl JunoModuleImpl {
 
 		let hook = hook.unwrap();
 		if hook == "juno.activated" {
-			*self.registered.lock().await = true;
+			*self.registered.write().await = true;
 			let mut buffer = self.message_buffer.lock().await;
-			self.connection.write().await.send(buffer.clone()).await?;
+			self.connection.write().await.send(buffer.clone()).await;
 			buffer.clear();
 		} else if &hook == "juno.deactivated" {
-			*self.registered.lock().await = true;
+			*self.registered.write().await = true;
 		} else {
-			let hook_listeners = self.hook_listeners.lock().await;
+			let hook_listeners = self.hook_listeners.read().await;
 			if !hook_listeners.contains_key(&hook) {
 				todo!("Wtf do I do now? Need to propogate errors. How do I do that?");
 			}
