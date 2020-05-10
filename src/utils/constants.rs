@@ -42,3 +42,5 @@ pub mod request_types {
 	pub const DECLARE_FUNCTION_REQUEST: u64 = 9;
 	pub const DECLARE_FUNCTION_RESPONSE: u64 = 10;
 }
+
+pub const READ_BUFFER_SIZE: usize = 1024;

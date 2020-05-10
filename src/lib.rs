@@ -1,4 +1,5 @@
 mod juno_module;
+mod juno_module_impl;
 mod utils;
 
 pub mod connection;
