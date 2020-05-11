@@ -232,6 +232,7 @@ impl JunoModule {
 						}
 					}
 					drop(protocol);
+					task::sleep(std::time::Duration::from_millis(10)).await;
 				} else {
 					break;
 				}

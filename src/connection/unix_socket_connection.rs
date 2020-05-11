@@ -2,8 +2,9 @@ use crate::{
 	connection::{BaseConnection, Buffer},
 	utils::{Error, READ_BUFFER_SIZE},
 };
+use std::time::Duration;
 
-use std::{net::Shutdown, os::unix::net::UnixStream, io::{Write, Read}};
+use async_std::{io, net::Shutdown, os::unix::net::UnixStream, prelude::*};
 use async_trait::async_trait;
 
 pub struct UnixSocketConnection {
@@ -28,12 +29,11 @@ impl BaseConnection for UnixSocketConnection {
 		if self.connection_setup {
 			panic!("Cannot call setup_connection() more than once!");
 		}
-		let result = UnixStream::connect(&self.socket_path);
+		let result = UnixStream::connect(&self.socket_path).await;
 		if let Err(err) = result {
 			return Err(Error::Internal(format!("{}", err)));
 		}
 		let client = result.unwrap();
-		client.set_nonblocking(true).unwrap();
 		self.client = Some(client);
 
 		self.connection_setup = true;
@@ -55,7 +55,7 @@ impl BaseConnection for UnixSocketConnection {
 		if !self.connection_setup || self.client.is_none() {
 			panic!("Cannot send data to a connection that hasn't been established yet. Did you forget to await the call to setup_connection()?");
 		}
-		let result = self.client.as_mut().unwrap().write_all(&buffer);
+		let result = self.client.as_mut().unwrap().write_all(&buffer).await;
 		if let Err(err) = result {
 			return Err(Error::Internal(format!("{}", err)));
 		}
@@ -72,10 +72,9 @@ impl BaseConnection for UnixSocketConnection {
 
 			while read_size > 0 {
 				let mut buf = [0u8; READ_BUFFER_SIZE];
-				let result = client.read(&mut buf);
+				let result = io::timeout(Duration::from_millis(10), client.read(&mut buf)).await;
 				if result.is_err() {
-					println!("Error: {}", result.unwrap_err());
-					return None;
+					return Some(buffer);
 				}
 				read_size = result.unwrap();
 				buffer.extend(buf[..read_size].into_iter());
