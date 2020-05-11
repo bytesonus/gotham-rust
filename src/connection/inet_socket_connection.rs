@@ -2,8 +2,10 @@ use crate::{
 	connection::{BaseConnection, Buffer},
 	utils::{Error, READ_BUFFER_SIZE},
 };
+use std::time::Duration;
 
 use async_std::{
+	io,
 	net::{Shutdown, TcpStream},
 	prelude::*,
 };
@@ -35,7 +37,8 @@ impl BaseConnection for InetSocketConnection {
 		if let Err(err) = result {
 			return Err(Error::Internal(format!("{}", err)));
 		}
-		self.client = Some(result.unwrap());
+		let client = result.unwrap();
+		self.client = Some(client);
 
 		self.connection_setup = true;
 		Ok(())
@@ -72,9 +75,9 @@ impl BaseConnection for InetSocketConnection {
 			let mut read_size = READ_BUFFER_SIZE;
 			while read_size > 0 {
 				let mut buf = [0u8; READ_BUFFER_SIZE];
-				let result = client.read(&mut buf).await;
+				let result = io::timeout(Duration::from_millis(10), client.read(&mut buf)).await;
 				if result.is_err() {
-					return None;
+					return Some(buffer);
 				}
 				read_size = result.unwrap();
 				buffer.extend(buf[..read_size].iter());

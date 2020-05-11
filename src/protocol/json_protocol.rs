@@ -164,18 +164,6 @@ pub fn get_next_message(protocol: &mut BaseProtocol) -> Option<BaseMessage> {
 	}
 }
 
-pub fn decode(protocol: &BaseProtocol, data: &[u8]) -> BaseMessage {
-	match protocol {
-		BaseProtocol::JsonProtocol { .. } => match decode_internal(data) {
-			Some(message) => message,
-			None => BaseMessage::Unknown {
-				request_id: String::default(),
-			},
-		},
-		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
-	}
-}
-
 fn decode_internal(data: &[u8]) -> Option<BaseMessage> {
 	let result: Result<Value> = from_slice(data);
 	if result.is_err() {
