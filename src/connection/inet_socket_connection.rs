@@ -4,11 +4,7 @@ use crate::{
 };
 use std::time::Duration;
 
-use async_std::{
-	io,
-	net::{Shutdown, TcpStream},
-	prelude::*,
-};
+use async_std::{io, net::Shutdown, net::TcpStream, prelude::*};
 use async_trait::async_trait;
 
 pub struct InetSocketConnection {
@@ -37,7 +33,8 @@ impl BaseConnection for InetSocketConnection {
 		if let Err(err) = result {
 			return Err(Error::Internal(format!("{}", err)));
 		}
-		self.client = Some(result.unwrap());
+		let client = result.unwrap();
+		self.client = Some(client);
 
 		self.connection_setup = true;
 		Ok(())

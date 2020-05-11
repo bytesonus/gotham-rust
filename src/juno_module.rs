@@ -64,13 +64,13 @@ impl JunoModule {
 	pub fn new(protocol: BaseProtocol, connection: Box<dyn BaseConnection + Send + Sync>) -> Self {
 		JunoModule {
 			module_impl: Arc::new(JunoModuleImpl {
-				protocol: Mutex::new(protocol),
+				protocol: RwLock::new(protocol),
 				connection: RwLock::new(connection),
-				requests: Mutex::new(HashMap::new()),
-				functions: Mutex::new(HashMap::new()),
-				hook_listeners: Mutex::new(HashMap::new()),
+				requests: RwLock::new(HashMap::new()),
+				functions: RwLock::new(HashMap::new()),
+				hook_listeners: RwLock::new(HashMap::new()),
 				message_buffer: Mutex::new(vec![]),
-				registered: Mutex::new(false),
+				registered: RwLock::new(false),
 			}),
 		}
 	}
@@ -83,7 +83,7 @@ impl JunoModule {
 	) -> Result<()> {
 		self.setup_connections().await?;
 
-		let request = self.module_impl.protocol.lock().await.initialize(
+		let request = self.module_impl.protocol.write().await.initialize(
 			String::from(module_id),
 			String::from(version),
 			dependencies,
@@ -100,14 +100,14 @@ impl JunoModule {
 		let fn_name = fn_name.to_string();
 		self.module_impl
 			.functions
-			.lock()
+			.write()
 			.await
 			.insert(fn_name.clone(), function);
 
 		let request = self
 			.module_impl
 			.protocol
-			.lock()
+			.read()
 			.await
 			.declare_function(fn_name);
 		self.send_request(request).await?;
@@ -123,7 +123,7 @@ impl JunoModule {
 		let request = self
 			.module_impl
 			.protocol
-			.lock()
+			.read()
 			.await
 			.call_function(fn_name, args);
 		self.send_request(request).await
@@ -131,7 +131,7 @@ impl JunoModule {
 
 	pub async fn register_hook(&mut self, hook: &str, callback: fn(Value)) -> Result<()> {
 		let hook = hook.to_string();
-		let mut hook_listeners = self.module_impl.hook_listeners.lock().await;
+		let mut hook_listeners = self.module_impl.hook_listeners.write().await;
 		if hook_listeners.contains_key(&hook) {
 			hook_listeners.get_mut(&hook).unwrap().push(callback);
 		} else {
@@ -139,7 +139,7 @@ impl JunoModule {
 		}
 		drop(hook_listeners);
 
-		let request = self.module_impl.protocol.lock().await.register_hook(hook);
+		let request = self.module_impl.protocol.read().await.register_hook(hook);
 		self.send_request(request).await?;
 		Ok(())
 	}
@@ -149,7 +149,7 @@ impl JunoModule {
 		let request = self
 			.module_impl
 			.protocol
-			.lock()
+			.read()
 			.await
 			.trigger_hook(hook, data);
 		self.send_request(request).await?;
@@ -175,7 +175,7 @@ impl JunoModule {
 				let mut connection = module.connection.write().await;
 				if let Some(data) = connection.read_data().await {
 					drop(connection);
-					let mut protocol = module.protocol.lock().await;
+					let mut protocol = module.protocol.write().await;
 					protocol.append_buffer(data);
 					while let Some(message) = protocol.get_next_message() {
 						let request_id = message.get_request_id().clone();
@@ -189,29 +189,28 @@ impl JunoModule {
 								let result =
 									module.execute_function_call(function, arguments).await;
 								let write_buffer = match result {
-									Ok(value) => module.protocol.lock().await.encode(
-										BaseMessage::FunctionCallResponse {
+									Ok(value) => {
+										protocol.encode(BaseMessage::FunctionCallResponse {
 											request_id: request_id.clone(),
 											data: value,
-										},
-									),
-									Err(error) => {
-										module.protocol.lock().await.encode(BaseMessage::Error {
-											request_id: request_id.clone(),
-											error: match error {
-												Error::Internal(_) => 0,
-												Error::FromJuno(error_code) => error_code,
-											},
 										})
 									}
+									Err(error) => protocol.encode(BaseMessage::Error {
+										request_id: request_id.clone(),
+										error: match error {
+											Error::Internal(_) => 0,
+											Error::FromJuno(error_code) => error_code,
+										},
+									}),
 								};
-								if let Err(err) =
-									module.connection.write().await.send(write_buffer).await
-								{
-									Err(err)
-								} else {
-									Ok(Value::Null)
-								}
+								module
+									.connection
+									.write()
+									.await
+									.send(write_buffer)
+									.await
+									.unwrap();
+								Ok(Value::Null)
 							}
 							BaseMessage::TriggerHookResponse { hook, data, .. } => {
 								if let Err(err) = module.execute_hook_triggered(hook, data).await {
@@ -223,13 +222,14 @@ impl JunoModule {
 							BaseMessage::Error { error, .. } => Err(Error::FromJuno(error)),
 							_ => Ok(Value::Null),
 						};
-						let mut requests = module.requests.lock().await;
+						let mut requests = module.requests.write().await;
 						if !requests.contains_key(&request_id) {
 							continue;
 						}
 						if requests.remove(&request_id).unwrap().send(value).is_err() {
 							println!("Error sending response of requestId: {}", &request_id);
 						}
+						drop(requests);
 					}
 					drop(protocol);
 					task::sleep(std::time::Duration::from_millis(10)).await;
@@ -244,15 +244,15 @@ impl JunoModule {
 
 	async fn send_request(&mut self, request: BaseMessage) -> Result<Value> {
 		if let BaseMessage::RegisterModuleRequest { .. } = request {
-			if *self.module_impl.registered.lock().await {
+			if *self.module_impl.registered.read().await {
 				return Err(Error::Internal(String::from("Module already registered")));
 			}
 		}
 
 		let request_type = request.get_type();
 		let request_id = request.get_request_id().clone();
-		let mut encoded = self.module_impl.protocol.lock().await.encode(request);
-		if *self.module_impl.registered.lock().await || request_type == 1 {
+		let mut encoded = self.module_impl.protocol.read().await.encode(request);
+		if *self.module_impl.registered.read().await || request_type == 1 {
 			self.module_impl
 				.connection
 				.write()
@@ -271,7 +271,7 @@ impl JunoModule {
 
 		self.module_impl
 			.requests
-			.lock()
+			.write()
 			.await
 			.insert(request_id, sender);
 
