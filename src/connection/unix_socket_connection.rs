@@ -77,7 +77,7 @@ impl BaseConnection for UnixSocketConnection {
 					return Some(buffer);
 				}
 				read_size = result.unwrap();
-				buffer.extend(buf[..read_size].into_iter());
+				buffer.extend(buf[..read_size].iter());
 			}
 			Some(buffer)
 		}

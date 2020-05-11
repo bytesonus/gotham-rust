@@ -9,14 +9,17 @@ use async_std::sync::{Mutex, RwLock};
 use futures::channel::oneshot::Sender;
 use std::collections::HashMap;
 
+type HookListeners = RwLock<HashMap<String, Vec<fn(Value)>>>;
+type Functions = RwLock<HashMap<String, fn(HashMap<String, Value>) -> Value>>;
+
 // Create separate rwlocks for each individual element
 // Such that each one of them can be individually read or written independent of the other
 pub(crate) struct JunoModuleImpl {
 	pub(crate) protocol: RwLock<BaseProtocol>,
 	pub(crate) connection: RwLock<Box<dyn BaseConnection + Send + Sync>>,
 	pub(crate) requests: RwLock<HashMap<String, Sender<Result<Value>>>>,
-	pub(crate) functions: RwLock<HashMap<String, fn(HashMap<String, Value>) -> Value>>,
-	pub(crate) hook_listeners: RwLock<HashMap<String, Vec<fn(Value)>>>,
+	pub(crate) functions: Functions,
+	pub(crate) hook_listeners: HookListeners,
 	pub(crate) message_buffer: Mutex<Buffer>,
 	pub(crate) registered: RwLock<bool>,
 }
