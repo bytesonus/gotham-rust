@@ -126,4 +126,11 @@ impl BaseProtocol {
 			_ => panic!("Currently, only JsonProtocol is supported"),
 		}
 	}
+
+	pub fn decode(&self, data: Buffer) -> BaseMessage {
+		match self {
+			BaseProtocol::JsonProtocol { .. } => json_protocol::decode(&self, data),
+			_ => panic!("Currently, only JsonProtocol is supported"),
+		}
+	}
 }

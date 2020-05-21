@@ -1,16 +1,27 @@
 use crate::{
 	connection::{BaseConnection, Buffer},
-	utils::{Error, READ_BUFFER_SIZE},
+	juno_module_impl::JunoModuleImpl,
+	utils::Error,
 };
-use std::time::Duration;
+use std::sync::Arc;
 
-use async_std::{io, net::Shutdown, os::unix::net::UnixStream, prelude::*};
+use async_std::{io::BufReader, os::unix::net::UnixStream, prelude::*, task};
 use async_trait::async_trait;
+use future::Either;
+use futures::{
+	channel::{
+		mpsc::{unbounded, UnboundedReceiver, UnboundedSender},
+		oneshot::{channel, Sender},
+	},
+	future, SinkExt,
+};
 
 pub struct UnixSocketConnection {
 	connection_setup: bool,
 	socket_path: String,
-	client: Option<UnixStream>,
+	on_data_handler: Option<Arc<JunoModuleImpl>>,
+	write_data_sender: Option<UnboundedSender<Buffer>>,
+	close_sender: Option<UnboundedSender<()>>,
 }
 
 impl UnixSocketConnection {
@@ -18,7 +29,9 @@ impl UnixSocketConnection {
 		UnixSocketConnection {
 			connection_setup: false,
 			socket_path,
-			client: None,
+			on_data_handler: None,
+			write_data_sender: None,
+			close_sender: None,
 		}
 	}
 }
@@ -29,57 +42,119 @@ impl BaseConnection for UnixSocketConnection {
 		if self.connection_setup {
 			panic!("Cannot call setup_connection() more than once!");
 		}
-		let result = UnixStream::connect(&self.socket_path).await;
-		if let Err(err) = result {
-			return Err(Error::Internal(format!("{}", err)));
-		}
-		let client = result.unwrap();
-		self.client = Some(client);
+		let (write_data_sender, write_data_receiver) = unbounded::<Vec<u8>>();
+		let (close_sender, close_receiver) = unbounded::<()>();
+		let (init_sender, init_receiver) = channel::<Result<(), Error>>();
+
+		self.write_data_sender = Some(write_data_sender);
+		self.close_sender = Some(close_sender);
+		let socket_path = self.socket_path.clone();
+		let juno_module_impl = self.on_data_handler.as_ref().unwrap().clone();
+
+		task::spawn(async {
+			read_data_from_socket(
+				socket_path,
+				init_sender,
+				juno_module_impl,
+				write_data_receiver,
+				close_receiver,
+			)
+			.await;
+		});
 
 		self.connection_setup = true;
-		Ok(())
+		init_receiver.await.unwrap()
 	}
 
 	async fn close_connection(&mut self) -> Result<(), Error> {
-		if !self.connection_setup || self.client.is_none() {
+		if !self.connection_setup || self.close_sender.is_none() {
 			panic!("Cannot close a connection that hasn't been established yet. Did you forget to call setup_connection()?");
 		}
-		let result = self.client.as_ref().unwrap().shutdown(Shutdown::Both);
-		if let Err(err) = result {
-			return Err(Error::Internal(format!("{}", err)));
-		}
+		self.close_sender.as_ref().unwrap().send(()).await.unwrap();
 		Ok(())
 	}
 
 	async fn send(&mut self, buffer: Buffer) -> Result<(), Error> {
-		if !self.connection_setup || self.client.is_none() {
+		if !self.connection_setup || self.write_data_sender.is_none() {
 			panic!("Cannot send data to a connection that hasn't been established yet. Did you forget to await the call to setup_connection()?");
 		}
-		let result = self.client.as_mut().unwrap().write_all(&buffer).await;
-		if let Err(err) = result {
-			return Err(Error::Internal(format!("{}", err)));
-		}
+		self.write_data_sender
+			.as_ref()
+			.unwrap()
+			.send(buffer)
+			.await
+			.unwrap();
 		Ok(())
 	}
 
-	async fn read_data(&mut self) -> Option<Buffer> {
-		if self.client.is_none() {
-			None
-		} else {
-			let client = self.client.as_mut().unwrap();
-			let mut buffer = Vec::new();
-			let mut read_size = READ_BUFFER_SIZE;
+	fn set_data_listener(&mut self, listener: Arc<JunoModuleImpl>) {
+		self.on_data_handler = Some(listener);
+	}
 
-			while read_size > 0 {
-				let mut buf = [0u8; READ_BUFFER_SIZE];
-				let result = io::timeout(Duration::from_millis(10), client.read(&mut buf)).await;
-				if result.is_err() {
-					return Some(buffer);
+	fn get_data_listener(&self) -> &Option<Arc<JunoModuleImpl>> {
+		&self.on_data_handler
+	}
+}
+
+async fn read_data_from_socket(
+	socket_path: String,
+	init_sender: Sender<Result<(), Error>>,
+	juno_impl: Arc<JunoModuleImpl>,
+	mut write_receiver: UnboundedReceiver<Vec<u8>>,
+	mut close_receiver: UnboundedReceiver<()>,
+) {
+	let result = UnixStream::connect(socket_path).await;
+	if let Err(err) = result {
+		init_sender
+			.send(Err(Error::Internal(format!("{}", err))))
+			.unwrap_or(());
+		return;
+	}
+	let client = result.unwrap();
+	init_sender.send(Ok(())).unwrap_or(());
+	let reader = BufReader::new(&client);
+	let mut lines = reader.lines();
+	let mut read_future = lines.next();
+	let mut write_future = write_receiver.next();
+	let mut close_future = close_receiver.next();
+	let mut read_or_write_future = future::select(read_future, write_future);
+	while let Either::Left((read_write_future, next_close_future)) =
+		future::select(read_or_write_future, close_future).await
+	{
+		// Either a read or a write event has happened
+		close_future = next_close_future;
+		match read_write_future {
+			Either::Left((read_future_result, next_write_future)) => {
+				// Read event has happened
+				read_future = lines.next();
+				write_future = next_write_future;
+				read_or_write_future = future::select(read_future, write_future);
+				// Send the read data to the MPSC sender
+				if let Some(Ok(line)) = read_future_result {
+					let juno_impl = juno_impl.clone();
+					task::spawn(async move {
+						juno_impl.on_data(line.as_bytes().to_vec()).await;
+					});
 				}
-				read_size = result.unwrap();
-				buffer.extend(buf[..read_size].iter());
 			}
-			Some(buffer)
+			Either::Right((write_future_result, next_read_future)) => {
+				// Write event has happened
+				read_future = next_read_future;
+				write_future = write_receiver.next();
+				read_or_write_future = future::select(read_future, write_future);
+				// Write the recieved bytes to the socket
+				if let Some(bytes) = write_future_result {
+					let mut socket = &client;
+					if let Err(err) = socket.write_all(&bytes).await {
+						println!("Error while sending data to socket: {}", err);
+					}
+				}
+			}
 		}
 	}
+	// Either a read, nor a write event has happened.
+	// This means the socket close event happened. Shutdown the socket and close any mpsc channels
+	drop(lines);
+	write_receiver.close();
+	close_receiver.close();
 }

@@ -16,10 +16,7 @@ use crate::{
 #[cfg(target_family = "unix")]
 use crate::connection::UnixSocketConnection;
 
-use async_std::{
-	sync::{Arc, Mutex, RwLock},
-	task,
-};
+use async_std::sync::{Arc, Mutex, RwLock};
 use futures::channel::oneshot::channel;
 use std::{
 	collections::HashMap,
@@ -27,7 +24,7 @@ use std::{
 };
 
 pub struct JunoModule {
-	module_impl: Arc<JunoModuleImpl>,
+	pub(crate) module_impl: Arc<JunoModuleImpl>,
 }
 
 impl JunoModule {
@@ -166,78 +163,17 @@ impl JunoModule {
 	}
 
 	async fn setup_connections(&mut self) -> Result<()> {
-		let module = self.module_impl.clone();
-		module.connection.write().await.setup_connection().await?;
-
-		// Run the read-write loop
-		task::spawn(async move {
-			loop {
-				let mut connection = module.connection.write().await;
-				if let Some(data) = connection.read_data().await {
-					drop(connection);
-					let mut protocol = module.protocol.write().await;
-					protocol.append_buffer(data);
-					while let Some(message) = protocol.get_next_message() {
-						let request_id = message.get_request_id().clone();
-						let value = match message {
-							BaseMessage::FunctionCallResponse { data, .. } => Ok(data),
-							BaseMessage::FunctionCallRequest {
-								function,
-								arguments,
-								..
-							} => {
-								let result =
-									module.execute_function_call(function, arguments).await;
-								let write_buffer = match result {
-									Ok(value) => {
-										protocol.encode(BaseMessage::FunctionCallResponse {
-											request_id: request_id.clone(),
-											data: value,
-										})
-									}
-									Err(error) => protocol.encode(BaseMessage::Error {
-										request_id: request_id.clone(),
-										error: match error {
-											Error::Internal(_) => 0,
-											Error::FromJuno(error_code) => error_code,
-										},
-									}),
-								};
-								module
-									.connection
-									.write()
-									.await
-									.send(write_buffer)
-									.await
-									.unwrap();
-								Ok(Value::Null)
-							}
-							BaseMessage::TriggerHookResponse { hook, data, .. } => {
-								if let Err(err) = module.execute_hook_triggered(hook, data).await {
-									Err(err)
-								} else {
-									Ok(Value::Null)
-								}
-							}
-							BaseMessage::Error { error, .. } => Err(Error::FromJuno(error)),
-							_ => Ok(Value::Null),
-						};
-						let mut requests = module.requests.write().await;
-						if !requests.contains_key(&request_id) {
-							continue;
-						}
-						if requests.remove(&request_id).unwrap().send(value).is_err() {
-							println!("Error sending response of requestId: {}", &request_id);
-						}
-						drop(requests);
-					}
-					drop(protocol);
-					task::sleep(std::time::Duration::from_millis(10)).await;
-				} else {
-					break;
-				}
-			}
-		});
+		self.module_impl
+			.connection
+			.write()
+			.await
+			.set_data_listener(self.module_impl.clone());
+		self.module_impl
+			.connection
+			.write()
+			.await
+			.setup_connection()
+			.await?;
 
 		Ok(())
 	}
@@ -252,6 +188,15 @@ impl JunoModule {
 		let request_type = request.get_type();
 		let request_id = request.get_request_id().clone();
 		let mut encoded = self.module_impl.protocol.read().await.encode(request);
+
+		let (sender, receiver) = channel::<Result<Value>>();
+
+		self.module_impl
+			.requests
+			.write()
+			.await
+			.insert(request_id, sender);
+
 		if *self.module_impl.registered.read().await || request_type == 1 {
 			self.module_impl
 				.connection
@@ -266,14 +211,6 @@ impl JunoModule {
 				.await
 				.append(&mut encoded);
 		}
-
-		let (sender, receiver) = channel::<Result<Value>>();
-
-		self.module_impl
-			.requests
-			.write()
-			.await
-			.insert(request_id, sender);
 
 		match receiver.await {
 			Ok(value) => value,
