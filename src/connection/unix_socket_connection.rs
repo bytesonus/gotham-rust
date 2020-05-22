@@ -7,13 +7,12 @@ use std::sync::Arc;
 
 use async_std::{io::BufReader, os::unix::net::UnixStream, prelude::*, task};
 use async_trait::async_trait;
-use future::Either;
 use futures::{
 	channel::{
 		mpsc::{unbounded, UnboundedReceiver, UnboundedSender},
 		oneshot::{channel, Sender},
 	},
-	future, SinkExt,
+	future::{self, Either}, SinkExt,
 };
 
 pub struct UnixSocketConnection {

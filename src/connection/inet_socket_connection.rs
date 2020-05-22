@@ -7,13 +7,12 @@ use std::sync::Arc;
 
 use async_std::{io::BufReader, net::TcpStream, prelude::*, task};
 use async_trait::async_trait;
-use future::Either;
 use futures::{
 	channel::{
 		mpsc::{unbounded, UnboundedReceiver, UnboundedSender},
 		oneshot::{channel, Sender},
 	},
-	future, SinkExt,
+	future::{self, Either}, SinkExt,
 };
 
 pub struct InetSocketConnection {
@@ -97,13 +96,13 @@ impl BaseConnection for InetSocketConnection {
 }
 
 async fn read_data_from_socket(
-	socket_path: String,
+	connect_addr: String,
 	init_sender: Sender<Result<(), Error>>,
 	juno_impl: Arc<JunoModuleImpl>,
 	mut write_receiver: UnboundedReceiver<Vec<u8>>,
 	mut close_receiver: UnboundedReceiver<()>,
 ) {
-	let result = TcpStream::connect(socket_path).await;
+	let result = TcpStream::connect(connect_addr).await;
 	if let Err(err) = result {
 		init_sender
 			.send(Err(Error::Internal(format!("{}", err))))
