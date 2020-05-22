@@ -12,7 +12,8 @@ use futures::{
 		mpsc::{unbounded, UnboundedReceiver, UnboundedSender},
 		oneshot::{channel, Sender},
 	},
-	future::{self, Either}, SinkExt,
+	future::{self, Either},
+	SinkExt,
 };
 
 pub struct InetSocketConnection {
