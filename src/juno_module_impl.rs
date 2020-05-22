@@ -34,7 +34,7 @@ impl JunoModuleImpl {
 		if !functions.contains_key(&function) {
 			return Err(Error::FromJuno(utils::errors::UNKNOWN_FUNCTION));
 		}
-		let function = functions[&function].clone();
+		let function = functions[&function];
 		drop(functions);
 		Ok(function(arguments))
 	}

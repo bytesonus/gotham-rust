@@ -168,12 +168,12 @@ pub fn decode(protocol: &BaseProtocol, data: Buffer) -> BaseMessage {
 	match protocol {
 		BaseProtocol::JsonProtocol { .. } => {
 			let message = decode_internal(&data);
-			if message.is_none() {
+			if let Some(message) = message {
+				message
+			} else {
 				BaseMessage::Unknown {
 					request_id: String::default(),
 				}
-			} else {
-				message.unwrap()
 			}
 		}
 		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
