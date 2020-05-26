@@ -1,6 +1,5 @@
-use async_std::{fs::remove_file, io::Result, os::unix::net::UnixListener, prelude::*, task};
+use async_std::{fs::remove_file, io::Result, os::unix::net::UnixListener, prelude::*};
 use futures::future;
-use futures_util::sink::SinkExt;
 use juno::connection::{BaseConnection, UnixSocketConnection};
 
 #[test]
@@ -8,11 +7,7 @@ fn connection_object_should_create_successfully() {
 	let _socket_connection = UnixSocketConnection::new(String::from("socket_path"));
 }
 
-#[test]
-fn should_connect() -> Result<()> {
-	task::block_on(should_connect_async())
-}
-
+#[async_std::test]
 async fn should_connect_async() -> Result<()> {
 	// Setup to try and connect to socket server
 	let mut connection = UnixSocketConnection::new(String::from("./temp-1.sock"));
@@ -30,11 +25,7 @@ async fn should_connect_async() -> Result<()> {
 	Ok(())
 }
 
-#[test]
-fn should_connect_and_send_data() -> Result<()> {
-	task::block_on(should_connect_and_send_data_async())
-}
-
+#[async_std::test]
 async fn should_connect_and_send_data_async() -> Result<()> {
 	// Setup to try and connect to socket server
 	let mut connection = UnixSocketConnection::new(String::from("./temp-2.sock"));
@@ -62,11 +53,7 @@ async fn should_connect_and_send_data_async() -> Result<()> {
 	Ok(())
 }
 
-#[test]
-fn should_connect_and_read_data() -> Result<()> {
-	task::block_on(should_connect_and_read_data_async())
-}
-
+#[async_std::test]
 async fn should_connect_and_read_data_async() -> Result<()> {
 	// Setup to try and connect to socket server
 	let mut connection = UnixSocketConnection::new(String::from("./temp-3.sock"));
@@ -96,11 +83,7 @@ async fn should_connect_and_read_data_async() -> Result<()> {
 	Ok(())
 }
 
-#[test]
-fn should_connect_and_send_data_from_cloned_sender() -> Result<()> {
-	task::block_on(should_connect_and_send_data_from_cloned_sender_async())
-}
-
+#[async_std::test]
 async fn should_connect_and_send_data_from_cloned_sender_async() -> Result<()> {
 	// Setup to try and connect to socket server
 	let mut connection = UnixSocketConnection::new(String::from("./temp-4.sock"));
@@ -131,18 +114,18 @@ async fn should_connect_and_send_data_from_cloned_sender_async() -> Result<()> {
 	Ok(())
 }
 
-#[test]
+#[async_std::test]
 #[should_panic]
-fn should_send_data_without_connection_and_panic() {
-	let mut connection = UnixSocketConnection::new(String::from("./test.sock"));
-	task::block_on(connection.send(vec![]));
+async fn should_send_data_without_connection_and_panic() {
+	let connection = UnixSocketConnection::new(String::from("./test.sock"));
+	connection.send(vec![]).await;
 }
 
-#[test]
+#[async_std::test]
 #[should_panic]
-fn should_close_connection_without_setup_and_panic() {
+async fn should_close_connection_without_setup_and_panic() {
 	let mut connection = UnixSocketConnection::new(String::from("./test.sock"));
-	task::block_on(connection.close_connection());
+	connection.close_connection().await;
 }
 
 #[test]
@@ -159,31 +142,18 @@ fn should_clone_write_sender_without_setup_and_panic() {
 	connection.clone_write_sender();
 }
 
-/*
-#[test]
+#[async_std::test]
 #[should_panic]
-fn should_setup_connection_twice_and_panic() {
-	let handle = std::thread::spawn(|| {
-		task::block_on(should_setup_connection_twice_and_panic_async()).unwrap();
-	})
-	.join();
-	task::block_on(remove_file("./temp-5.sock")).unwrap();
-	handle.unwrap();
-}
-
-async fn should_setup_connection_twice_and_panic_async() -> Result<()> {
+async fn should_setup_connection_twice_and_panic_async() {
 	// Setup to try and connect to socket server
 	let mut connection = UnixSocketConnection::new(String::from("./temp-5.sock"));
 
 	// Listen for unix socket connections
-	let socket = UnixListener::bind("./temp-5.sock").await?;
+	let socket = UnixListener::bind("./temp-5.sock").await.unwrap();
 	let mut incoming = socket.incoming();
 	let (_stream, result) = future::join(incoming.next(), connection.setup_connection()).await;
 	result.unwrap();
 	let (_, result) = future::join(incoming.next(), connection.setup_connection()).await;
 	result.unwrap();
 	drop(socket);
-
-	Ok(())
 }
-*/

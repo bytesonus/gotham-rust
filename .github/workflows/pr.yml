@@ -56,12 +56,12 @@ jobs:
           command: build
           args: --release --all
 
-#      - name: Cargo test
-#        if: matrix.rust == 'stable'
-#        uses: actions-rs/cargo@v1
-#        with:
-#          command: test
-#          args: --release --all -- --test-threads=1
+      - name: Cargo test
+        if: matrix.rust == 'stable'
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --all -- --test-threads=1
 
       - name: Cargo fmt
         uses: actions-rs/cargo@v1

@@ -10,7 +10,7 @@ use std::{
 };
 
 pub enum BaseProtocol {
-	JsonProtocol { module_id: String },
+	JsonProtocol { module_id: String, buffer: Vec<u8> },
 	MsgPackProtocol { module_id: String },
 }
 
@@ -39,16 +39,34 @@ impl BaseProtocol {
 
 	pub fn get_module_id(&self) -> &String {
 		match self {
-			BaseProtocol::JsonProtocol { module_id } => module_id,
+			BaseProtocol::JsonProtocol { module_id, .. } => module_id,
 			_ => panic!("Currently, only JsonProtocol is supported"),
 		}
 	}
 
 	pub fn set_module_id(&mut self, new_module_id: String) {
 		match self {
-			BaseProtocol::JsonProtocol { ref mut module_id } => {
+			BaseProtocol::JsonProtocol {
+				ref mut module_id, ..
+			} => {
 				*module_id = new_module_id;
 			}
+			_ => panic!("Currently, only JsonProtocol is supported"),
+		}
+	}
+
+	pub fn append_buffer(&mut self, new_buffer: Vec<u8>) {
+		match self {
+			BaseProtocol::JsonProtocol { ref mut buffer, .. } => {
+				buffer.extend(new_buffer);
+			}
+			_ => panic!("Currently, only JsonProtocol is supported"),
+		}
+	}
+
+	pub fn get_next_message(&mut self) -> Option<BaseMessage> {
+		match self {
+			BaseProtocol::JsonProtocol { .. } => json_protocol::get_next_message(self),
 			_ => panic!("Currently, only JsonProtocol is supported"),
 		}
 	}
@@ -109,7 +127,7 @@ impl BaseProtocol {
 		}
 	}
 
-	pub fn decode(&self, data: &[u8]) -> BaseMessage {
+	pub fn decode(&self, data: Buffer) -> BaseMessage {
 		match self {
 			BaseProtocol::JsonProtocol { .. } => json_protocol::decode(&self, data),
 			_ => panic!("Currently, only JsonProtocol is supported"),

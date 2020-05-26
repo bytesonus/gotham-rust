@@ -10,13 +10,15 @@ use std::collections::HashMap;
 pub fn default() -> BaseProtocol {
 	BaseProtocol::JsonProtocol {
 		module_id: String::default(),
+		buffer: Vec::new(),
 	}
 }
 
 pub fn from(other: &BaseProtocol) -> BaseProtocol {
 	match other {
-		BaseProtocol::JsonProtocol { module_id } => BaseProtocol::JsonProtocol {
+		BaseProtocol::JsonProtocol { module_id, buffer } => BaseProtocol::JsonProtocol {
 			module_id: module_id.clone(),
+			buffer: buffer.clone(),
 		},
 		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
 	}
@@ -142,14 +144,38 @@ pub fn encode(protocol: &BaseProtocol, req: BaseMessage) -> Buffer {
 	}
 }
 
-pub fn decode(protocol: &BaseProtocol, data: &[u8]) -> BaseMessage {
+pub fn get_next_message(protocol: &mut BaseProtocol) -> Option<BaseMessage> {
 	match protocol {
-		BaseProtocol::JsonProtocol { .. } => match decode_internal(data) {
-			Some(msg) => msg,
-			None => BaseMessage::Unknown {
-				request_id: String::default(),
-			},
-		},
+		BaseProtocol::JsonProtocol { ref mut buffer, .. } => {
+			let index = buffer.iter().position(|item| *item == b'\n')?;
+
+			let new_buffer = buffer.split_off(index + 1);
+			let message = decode_internal(&buffer);
+			*buffer = new_buffer;
+			if message.is_none() {
+				Some(BaseMessage::Unknown {
+					request_id: String::default(),
+				})
+			} else {
+				message
+			}
+		}
+		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
+	}
+}
+
+pub fn decode(protocol: &BaseProtocol, data: Buffer) -> BaseMessage {
+	match protocol {
+		BaseProtocol::JsonProtocol { .. } => {
+			let message = decode_internal(&data);
+			if let Some(message) = message {
+				message
+			} else {
+				BaseMessage::Unknown {
+					request_id: String::default(),
+				}
+			}
+		}
 		_ => panic!("BaseProtocol tried to decode a non-JsonProtocol as a JsonProtocol"),
 	}
 }
