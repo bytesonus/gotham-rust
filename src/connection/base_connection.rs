@@ -1,13 +1,13 @@
-use crate::{connection::Buffer, utils::Error};
+use crate::{connection::Buffer, juno_module_impl::JunoModuleImpl, utils::Error};
 use async_trait::async_trait;
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender};
+use std::sync::Arc;
 
 #[async_trait]
 pub trait BaseConnection {
 	async fn setup_connection(&mut self) -> Result<(), Error>;
-	async fn close_connection(&mut self);
-	async fn send(&mut self, buffer: Buffer);
+	async fn close_connection(&mut self) -> Result<(), Error>;
+	async fn send(&mut self, buffer: Buffer) -> Result<(), Error>;
 
-	fn get_data_receiver(&mut self) -> UnboundedReceiver<Buffer>;
-	fn clone_write_sender(&self) -> UnboundedSender<Buffer>;
+	fn set_data_listener(&mut self, listener: Arc<JunoModuleImpl>);
+	fn get_data_listener(&self) -> &Option<Arc<JunoModuleImpl>>;
 }

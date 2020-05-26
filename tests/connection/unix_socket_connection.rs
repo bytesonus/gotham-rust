@@ -1,6 +1,5 @@
-use async_std::{fs::remove_file, io::Result, os::unix::net::UnixListener, prelude::*, task};
+use async_std::{fs::remove_file, io::Result, os::unix::net::UnixListener, prelude::*};
 use futures::future;
-use futures_util::sink::SinkExt;
 use juno::connection::{BaseConnection, UnixSocketConnection};
 
 #[test]
@@ -115,18 +114,18 @@ async fn should_connect_and_send_data_from_cloned_sender_async() -> Result<()> {
 	Ok(())
 }
 
-#[test]
+#[async_std::test]
 #[should_panic]
-fn should_send_data_without_connection_and_panic() {
-	let mut connection = UnixSocketConnection::new(String::from("./test.sock"));
-	task::block_on(connection.send(vec![]));
+async fn should_send_data_without_connection_and_panic() {
+	let connection = UnixSocketConnection::new(String::from("./test.sock"));
+	connection.send(vec![]).await;
 }
 
-#[test]
+#[async_std::test]
 #[should_panic]
-fn should_close_connection_without_setup_and_panic() {
+async fn should_close_connection_without_setup_and_panic() {
 	let mut connection = UnixSocketConnection::new(String::from("./test.sock"));
-	task::block_on(connection.close_connection());
+	connection.close_connection().await;
 }
 
 #[test]

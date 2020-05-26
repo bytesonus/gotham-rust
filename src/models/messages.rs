@@ -1,6 +1,7 @@
 use crate::{models::Value, utils::request_types};
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub enum BaseMessage {
 	RegisterModuleRequest {
 		request_id: String,
