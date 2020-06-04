@@ -15,17 +15,17 @@ type Functions = RwLock<HashMap<String, fn(HashMap<String, Value>) -> Value>>;
 // Create separate rwlocks for each individual element
 // Such that each one of them can be individually read or written independent of the other
 pub struct JunoModuleImpl {
-	pub protocol: RwLock<BaseProtocol>,
-	pub connection: RwLock<Box<dyn BaseConnection + Send + Sync>>,
-	pub requests: RwLock<HashMap<String, Sender<Result<Value>>>>,
-	pub functions: Functions,
-	pub hook_listeners: HookListeners,
-	pub message_buffer: Mutex<Buffer>,
-	pub registered: RwLock<bool>,
+	pub(crate) protocol: RwLock<BaseProtocol>,
+	pub(crate) connection: RwLock<Box<dyn BaseConnection + Send + Sync>>,
+	pub(crate) requests: RwLock<HashMap<String, Sender<Result<Value>>>>,
+	pub(crate) functions: Functions,
+	pub(crate) hook_listeners: HookListeners,
+	pub(crate) message_buffer: Mutex<Buffer>,
+	pub(crate) registered: RwLock<bool>,
 }
 
 impl JunoModuleImpl {
-	pub async fn execute_function_call(
+	pub(crate) async fn execute_function_call(
 		&self,
 		function: String,
 		arguments: HashMap<String, Value>,
@@ -39,7 +39,11 @@ impl JunoModuleImpl {
 		Ok(function(arguments))
 	}
 
-	pub async fn execute_hook_triggered(&self, hook: Option<String>, data: Value) -> Result<()> {
+	pub(crate) async fn execute_hook_triggered(
+		&self,
+		hook: Option<String>,
+		data: Value,
+	) -> Result<()> {
 		if hook.is_none() {
 			// This module triggered the hook.
 			return Ok(());
