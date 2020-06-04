@@ -39,7 +39,11 @@ impl JunoModuleImpl {
 		Ok(function(arguments))
 	}
 
-	pub(crate) async fn execute_hook_triggered(&self, hook: Option<String>, data: Value) -> Result<()> {
+	pub(crate) async fn execute_hook_triggered(
+		&self,
+		hook: Option<String>,
+		data: Value,
+	) -> Result<()> {
 		if hook.is_none() {
 			// This module triggered the hook.
 			return Ok(());
