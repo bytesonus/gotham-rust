@@ -229,7 +229,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "juno"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "async-std 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-trait 0.1.33 (registry+https://github.com/rust-lang/crates.io-index)",
